@@ -5,34 +5,27 @@ name: aggr-server
 networks:
   backend:
     name: aggr_backend
-    driver: overlay
 
 x-common-collector: &common-collector
   image: aggr-server
   build:
     context: .
-    dockerfile: ./docker/Dockerfile
+    dockerfile: ./docker/Dockerfile.dev
     args:
       - WORKDIR=${WORKDIR}
   volumes:
-    - ./data:/usr/src/app/data
+    - ./src:${WORKDIR}
+    - ./data:${WORKDIR}/data
+    - /usr/src/app/node_modules
   environment:
-    - NODE_ENV=production
+    - NODE_ENV=development
     - API_ROLE=false
     - COLLECT_ROLE=true
   env_file:
-    - ./.env
+    - ./.env.dev
   networks:
     - backend
   restart: unless-stopped
-  deploy:
-    update_config:
-      parallelism: 1
-      delay: 10s
-    restart_policy:
-      condition: on-failure
-      delay: 5s
-      max_attempts: 3
 
 services:
   api:
@@ -40,62 +33,67 @@ services:
     image: aggr-server
     build:
       context: .
-      dockerfile: ./docker/Dockerfile
+      dockerfile: ./docker/Dockerfile.dev
     volumes:
-      - ./config/api/config.json:/usr/src/app/config.json
-      - ./data:/usr/src/app/data
+      - ./src:${WORKDIR}
+      - ./config/api/config.json:${WORKDIR}/config.json
+      - ./data:${WORKDIR}/data
+      - /usr/src/app/node_modules
     ports:
-      - ${API_PORT:-3000}:${API_PORT:-3000}
+      - "${HOST_PORT:-3000}:${PORT}"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - API_ROLE=true
       - COLLECT_ROLE=false
     env_file:
-      - ./.env
+      - ./.env.dev
     networks:
       - backend
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
+    depends_on:
+      - influx
+    command: npm run dev
 
   collector-btc:
     <<: *common-collector
     container_name: aggr-collector-btc
     volumes:
-      - ./config/collectors/btc.json:/usr/src/app/config.json
+      - ./src:${WORKDIR}
+      - ./config/collectors/btc.json:${WORKDIR}/config.json
+      - ./data:${WORKDIR}/data
+      - /usr/src/app/node_modules
     environment:
       - COLLECTOR_ID=btc-collector
       - PAIRS=COINBASE:BTC-USD,BINANCE:btcusdt
+    command: npm run dev
+    depends_on:
+      - influx
 
   collector-eth:
     <<: *common-collector
     container_name: aggr-collector-eth
     volumes:
-      - ./config/collectors/eth.json:/usr/src/app/config.json
+      - ./src:${WORKDIR}
+      - ./config/collectors/eth.json:${WORKDIR}/config.json
+      - ./data:${WORKDIR}/data
+      - /usr/src/app/node_modules
     environment:
       - COLLECTOR_ID=eth-collector
       - PAIRS=COINBASE:ETH-USD,BINANCE:ethusdt
+    command: npm run dev
+    depends_on:
+      - influx
 
   influx:
     container_name: aggr-influx
     image: influxdb:1.8.10
     ports:
-      - ${INFLUX_PORT:-8086}:${INFLUX_PORT:-8086}
+      - "${HOST_INFLUX_PORT:-8086}:${INFLUX_PORT}"
     volumes:
       - influx_data:/var/lib/influxdb
     networks:
       - backend
     environment:
       - INFLUXDB_HTTP_AUTH_ENABLED=false
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
 
   chronograf:
     container_name: aggr-chronograf
@@ -103,11 +101,11 @@ services:
     volumes:
       - chronograf_data:/var/lib/chronograf
     ports:
-      - '8885:8888'
+      - "${HOST_CHRONOGRAF_PORT:-8885}:8888"
     depends_on:
       - influx
     environment:
-      - INFLUXDB_URL=http://${INFLUX_HOST:-influx}:${INFLUX_PORT:-8086}
+      - INFLUXDB_URL=http://${INFLUX_HOST}:${INFLUX_PORT}
     networks:
       - backend
 

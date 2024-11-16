@@ -1,0 +1,125 @@
+version: '3.7'
+
+name: aggr-server
+
+networks:
+  backend:
+    name: aggr_backend
+    driver: overlay
+
+x-common-collector: &common-collector
+  image: aggr-server
+  build:
+    context: .
+    dockerfile: ./docker/Dockerfile
+    args:
+      - WORKDIR=${WORKDIR}
+  volumes:
+    - ./data:/usr/src/app/data
+  environment:
+    - NODE_ENV=production
+    - API_ROLE=false
+    - COLLECT_ROLE=true
+  env_file:
+    - ./.env.prod
+  networks:
+    - backend
+  restart: unless-stopped
+  deploy:
+    update_config:
+      parallelism: 1
+      delay: 10s
+    restart_policy:
+      condition: on-failure
+      delay: 5s
+      max_attempts: 3
+
+services:
+  api:
+    container_name: aggr-api
+    image: aggr-server
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    volumes:
+      - ./config/api/config.json:/usr/src/app/config.json
+      - ./data:/usr/src/app/data
+    ports:
+      - ${API_PORT:-3000}:${API_PORT:-3000}
+    environment:
+      - NODE_ENV=production
+      - API_ROLE=true
+      - COLLECT_ROLE=false
+    env_file:
+      - ./.env.prod
+    networks:
+      - backend
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  collector-btc:
+    <<: *common-collector
+    container_name: aggr-collector-btc
+    volumes:
+      - ./config/collectors/btc.json:/usr/src/app/config.json
+    environment:
+      - COLLECTOR_ID=btc-collector
+      - PAIRS=COINBASE:BTC-USD,BINANCE:btcusdt
+    deploy:
+      mode: replicated
+      replicas: 1
+
+  collector-eth:
+    <<: *common-collector
+    container_name: aggr-collector-eth
+    volumes:
+      - ./config/collectors/eth.json:/usr/src/app/config.json
+    environment:
+      - COLLECTOR_ID=eth-collector
+      - PAIRS=COINBASE:ETH-USD,BINANCE:ethusdt
+    deploy:
+      mode: replicated
+      replicas: 1
+
+  influx:
+    container_name: aggr-influx
+    image: influxdb:1.8.10
+    ports:
+      - ${INFLUX_PORT:-8086}:${INFLUX_PORT:-8086}
+    volumes:
+      - influx_data:/var/lib/influxdb
+    networks:
+      - backend
+    environment:
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  chronograf:
+    container_name: aggr-chronograf
+    image: chronograf:latest
+    volumes:
+      - chronograf_data:/var/lib/chronograf
+    ports:
+      - '8885:8888'
+    depends_on:
+      - influx
+    environment:
+      - INFLUXDB_URL=http://${INFLUX_HOST:-influx}:${INFLUX_PORT:-8086}
+    networks:
+      - backend
+    deploy:
+      mode: replicated
+      replicas: 1
+
+volumes:
+  influx_data:
+  chronograf_data:

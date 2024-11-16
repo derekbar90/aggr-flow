@@ -1,0 +1,22 @@
+FROM node:18-alpine
+
+ARG WORKDIR=/usr/src/app
+ENV WORKDIR=${WORKDIR}
+
+WORKDIR ${WORKDIR}
+
+# Install nodemon for development
+RUN npm install -g nodemon
+
+# Copy package files
+COPY src/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Create data directory
+RUN mkdir -p data
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]
