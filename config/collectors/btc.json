@@ -1,0 +1,7 @@
+{
+  "api": false,
+  "collect": true,
+  "storage": ["influx"],
+  "influxCollectors": true,
+  "id": "btc-collector"
+}

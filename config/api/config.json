@@ -1,0 +1,6 @@
+{
+  "api": true,
+  "collect": false,
+  "storage": ["influx"],
+  "influxCollectors": true
+}
