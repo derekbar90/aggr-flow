@@ -1,0 +1,9 @@
+{
+  "id": "1",
+  "name": "InfluxDB",
+  "type": "influx",
+  "url": "http://influx:8086",
+  "default": true,
+  "telegraf": "telegraf",
+  "organization": "default"
+} 

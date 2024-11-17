@@ -4,9 +4,6 @@
   "storage": ["influx"],
   "influxCollectors": true,
   "id": "btc-collector",
-  "influx": {
-    "host": "influx",
-    "port": 8086,
-    "database": "significant_trades"
-  }
+  "influxHost": "influx",
+  "influxPort": 8086
 }

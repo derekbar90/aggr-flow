@@ -3,9 +3,6 @@
   "collect": false,
   "storage": ["influx"],
   "influxCollectors": true,
-  "influx": {
-    "host": "influx",
-    "port": 8086,
-    "database": "significant_trades"
-  }
+  "influxHost": "influx",
+  "influxPort": 8086
 }

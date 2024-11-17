@@ -61,7 +61,6 @@ services:
     command: >
       /bin/sh -c "
         wait-for-it.sh influx:8086 --timeout=30 --strict -- 
-        init-influxdb.sh &&
         npm run dev"
 
   collector-btc:
@@ -79,7 +78,6 @@ services:
     command: >
       /bin/sh -c "
         wait-for-it.sh influx:8086 --timeout=30 --strict -- 
-        init-influxdb.sh &&
         npm run dev"
     depends_on:
       influx:
@@ -100,7 +98,6 @@ services:
     command: >
       /bin/sh -c "
         wait-for-it.sh influx:8086 --timeout=30 --strict -- 
-        init-influxdb.sh &&
         npm run dev"
     depends_on:
       influx:
@@ -131,14 +128,39 @@ services:
     image: chronograf:latest
     volumes:
       - chronograf_data:/var/lib/chronograf
+      - ./config/chronograf/sources.json:/usr/share/chronograf/resources/sources/default.json
     ports:
       - "${HOST_CHRONOGRAF_PORT:-8885}:8888"
     depends_on:
-      - influx
+      influx:
+        condition: service_healthy
     environment:
-      - INFLUXDB_URL=http://${INFLUX_HOST}:${INFLUX_PORT}
+      - INFLUXDB_URL=http://influx:8086
+      - INFLUXDB_USERNAME=
+      - INFLUXDB_PASSWORD=
+      - INFLUXDB_ORG=
+      - INFLUXDB_BUCKET=significant_trades
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8888"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
+
+  telegraf:
+    container_name: aggr-telegraf
+    image: telegraf:latest
+    volumes:
+      - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    networks:
+      - backend
+    depends_on:
+      influx:
+        condition: service_healthy
+    environment:
+      - INFLUXDB_URL=http://influx:8086
+      - INFLUXDB_DB=significant_trades
 
 volumes:
   influx_data:
