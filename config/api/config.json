@@ -2,5 +2,10 @@
   "api": true,
   "collect": false,
   "storage": ["influx"],
-  "influxCollectors": true
+  "influxCollectors": true,
+  "influx": {
+    "host": "influx",
+    "port": 8086,
+    "database": "significant_trades"
+  }
 }

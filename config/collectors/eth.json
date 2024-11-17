@@ -3,5 +3,10 @@
   "collect": true,
   "storage": ["influx"],
   "influxCollectors": true,
-  "id": "eth-collector"
+  "id": "eth-collector",
+  "influx": {
+    "host": "influx",
+    "port": 8086,
+    "database": "significant_trades"
+  }
 }

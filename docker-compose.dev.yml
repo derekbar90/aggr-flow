@@ -21,6 +21,9 @@ x-common-collector: &common-collector
     - NODE_ENV=development
     - API_ROLE=false
     - COLLECT_ROLE=true
+    - INFLUX_HOST=influx
+    - INFLUX_PORT=8086
+    - INFLUX_DATABASE=significant_trades
   env_file:
     - ./.env.dev
   networks:
@@ -45,13 +48,21 @@ services:
       - NODE_ENV=development
       - API_ROLE=true
       - COLLECT_ROLE=false
+      - INFLUX_HOST=influx
+      - INFLUX_PORT=8086
+      - INFLUX_DATABASE=significant_trades
     env_file:
       - ./.env.dev
     networks:
       - backend
     depends_on:
-      - influx
-    command: npm run dev
+      influx:
+        condition: service_healthy
+    command: >
+      /bin/sh -c "
+        wait-for-it.sh influx:8086 --timeout=30 --strict -- 
+        init-influxdb.sh &&
+        npm run dev"
 
   collector-btc:
     <<: *common-collector
@@ -64,9 +75,15 @@ services:
     environment:
       - COLLECTOR_ID=btc-collector
       - PAIRS=COINBASE:BTC-USD,BINANCE:btcusdt
-    command: npm run dev
+      - INFLUX_HOST=influx
+    command: >
+      /bin/sh -c "
+        wait-for-it.sh influx:8086 --timeout=30 --strict -- 
+        init-influxdb.sh &&
+        npm run dev"
     depends_on:
-      - influx
+      influx:
+        condition: service_healthy
 
   collector-eth:
     <<: *common-collector
@@ -79,9 +96,15 @@ services:
     environment:
       - COLLECTOR_ID=eth-collector
       - PAIRS=COINBASE:ETH-USD,BINANCE:ethusdt
-    command: npm run dev
+      - INFLUX_HOST=influx
+    command: >
+      /bin/sh -c "
+        wait-for-it.sh influx:8086 --timeout=30 --strict -- 
+        init-influxdb.sh &&
+        npm run dev"
     depends_on:
-      - influx
+      influx:
+        condition: service_healthy
 
   influx:
     container_name: aggr-influx
@@ -94,6 +117,14 @@ services:
       - backend
     environment:
       - INFLUXDB_HTTP_AUTH_ENABLED=false
+      - INFLUXDB_DB=significant_trades
+      - INFLUXDB_REPORTING_DISABLED=true
+      - INFLUXDB_ADMIN_ENABLED=true
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "SHOW DATABASES"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
 
   chronograf:
     container_name: aggr-chronograf

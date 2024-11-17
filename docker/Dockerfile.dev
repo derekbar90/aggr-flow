@@ -5,8 +5,25 @@ ENV WORKDIR=${WORKDIR}
 
 WORKDIR ${WORKDIR}
 
+# Install build dependencies and required packages
+RUN apk add --no-cache \
+    bash \
+    netcat-openbsd \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    libc-dev \
+    linux-headers \
+    python3
+
 # Install nodemon for development
 RUN npm install -g nodemon
+
+# Copy wait-for-it script and init script
+COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
+COPY init-influxdb.sh /usr/local/bin/init-influxdb.sh
+RUN chmod +x /usr/local/bin/wait-for-it.sh /usr/local/bin/init-influxdb.sh
 
 # Copy package files
 COPY src/package*.json ./
