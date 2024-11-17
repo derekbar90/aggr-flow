@@ -16,7 +16,8 @@ RUN apk add --no-cache \
     libc-dev \
     linux-headers \
     python3 \
-    influxdb-client
+    influxdb-client \
+    jq
 
 # Install nodemon for development
 RUN npm install -g nodemon

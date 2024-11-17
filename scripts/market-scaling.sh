@@ -47,21 +47,23 @@ add_market_collector() {
     # Create config directory if it doesn't exist
     mkdir -p "./config/collectors"
     
-    # Create collector config file
+    # Create collector config file with new schema
     cat > "./config/collectors/${name}.json" <<EOF
 {
     "api": false,
     "collect": true,
     "storage": ["influx"],
     "influxCollectors": true,
-    "id": "${name}"
+    "id": "${name}",
+    "influxHost": "influx",
+    "influxPort": 8086
 }
 EOF
     
     # Add new service to docker-compose.yml
     if ! grep -q "collector-${name}:" docker-compose.yml; then
         # Find the last collector service and add new one after it
-        sed -i "/collector-.*:/!b;/^$/!b;i\  collector-${name}:\n\    <<: *common-collector\n\    container_name: aggr-collector-${name}\n\    volumes:\n\      - ./config/collectors/${name}.json:/usr/src/app/config.json\n\    environment:\n\      - COLLECTOR_ID=${name}\n\      - PAIRS=${pairs}\n" docker-compose.yml
+        sed -i "/collector-.*:/!b;/^$/!b;i\  collector-${name}:\n\    <<: *common-collector\n\    container_name: aggr-collector-${name}\n\    volumes:\n\      - ./config/collectors/${name}.json:/usr/src/app/config.json\n\    environment:\n\      - COLLECTOR_ID=${name}\n\      - PAIRS=${pairs}\n\      - INFLUX_HOST=influx\n\      - INFLUX_PORT=8086\n\      - INFLUX_DATABASE=significant_trades\n" docker-compose.yml
         
         print_success "Added new collector to docker-compose.yml"
     else
@@ -71,7 +73,11 @@ EOF
     
     # Deploy the new service
     print_message "Deploying new collector..."
-    docker stack deploy -c docker-compose.yml aggr-stack
+    if [ -f "docker-compose.dev.yml" ]; then
+        docker-compose -f docker-compose.dev.yml up -d "collector-${name}"
+    else
+        docker stack deploy -c docker-compose.yml aggr-stack
+    fi
     
     print_success "Collector ${name} has been added and deployed"
 }
@@ -84,15 +90,19 @@ scale_collector() {
     print_message "Scaling collector-${name} to ${replicas} replicas"
     
     # Verify collector exists
-    if ! grep -q "collector-${name}:" docker-compose.yml; then
-        print_error "Collector ${name} not found in docker-compose.yml"
+    if [ ! -f "./config/collectors/${name}.json" ]; then
+        print_error "Collector configuration ${name}.json not found"
         exit 1
     fi
     
-    # Scale the service
-    docker service scale "aggr-stack_collector-${name}"="${replicas}"
-    
-    print_success "Collector ${name} scaled to ${replicas} replicas"
+    # Scale the service based on environment
+    if [ -f "docker-compose.dev.yml" ]; then
+        print_error "Scaling not supported in development environment"
+        exit 1
+    else
+        docker service scale "aggr-stack_collector-${name}"="${replicas}"
+        print_success "Collector ${name} scaled to ${replicas} replicas"
+    fi
 }
 
 # Function to remove a collector
@@ -102,20 +112,21 @@ remove_collector() {
     print_message "Removing collector: ${name}"
     
     # Verify collector exists
-    if ! grep -q "collector-${name}:" docker-compose.yml; then
-        print_error "Collector ${name} not found in docker-compose.yml"
+    if [ ! -f "./config/collectors/${name}.json" ]; then
+        print_error "Collector configuration ${name}.json not found"
         exit 1
     fi
     
-    # Remove service from docker-compose.yml
-    sed -i "/collector-${name}:/,/^[^ ]/d" docker-compose.yml
+    # Remove service based on environment
+    if [ -f "docker-compose.dev.yml" ]; then
+        docker-compose -f docker-compose.dev.yml stop "collector-${name}"
+        docker-compose -f docker-compose.dev.yml rm -f "collector-${name}"
+    else
+        docker service rm "aggr-stack_collector-${name}"
+    fi
     
     # Remove config file
     rm -f "./config/collectors/${name}.json"
-    
-    # Update the deployment
-    print_message "Updating deployment..."
-    docker stack deploy -c docker-compose.yml aggr-stack
     
     print_success "Collector ${name} has been removed"
 }
@@ -125,19 +136,28 @@ list_collectors() {
     print_message "Current collectors:"
     echo
     
-    # Extract collector names and their pairs from docker-compose.yml
-    grep -A 5 "collector-.*:" docker-compose.yml | grep -E "collector-.*:|PAIRS=" | sed 's/://g' | paste -d ' ' - - | \
-        while read -r line; do
-            name=$(echo "$line" | cut -d' ' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            pairs=$(echo "$line" | grep -o 'PAIRS=[^ ]*' | cut -d= -f2)
+    # List all collector configurations
+    for config in ./config/collectors/*.json; do
+        if [ -f "$config" ]; then
+            name=$(basename "$config" .json)
+            id=$(jq -r '.id' "$config")
+            pairs=$(docker inspect --format '{{range .Config.Env}}{{if contains "PAIRS=" .}}{{.}}{{end}}{{end}}' "aggr-collector-${name}" 2>/dev/null | cut -d= -f2)
+            
             echo "Name: ${name}"
+            echo "ID: ${id}"
             echo "Pairs: ${pairs}"
             
             # Get current replicas if service is running
-            replicas=$(docker service ls --filter name="aggr-stack_${name}" --format "{{.Replicas}}" 2>/dev/null || echo "Not deployed")
-            echo "Current replicas: ${replicas}"
+            if [ -f "docker-compose.dev.yml" ]; then
+                status=$(docker inspect --format '{{.State.Status}}' "aggr-collector-${name}" 2>/dev/null || echo "Not running")
+                echo "Status: ${status}"
+            else
+                replicas=$(docker service ls --filter name="aggr-stack_collector-${name}" --format "{{.Replicas}}" 2>/dev/null || echo "Not deployed")
+                echo "Current replicas: ${replicas}"
+            fi
             echo
-        done
+        fi
+    done
 }
 
 # Main script

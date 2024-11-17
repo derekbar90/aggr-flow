@@ -20,6 +20,9 @@ x-common-collector: &common-collector
     - NODE_ENV=production
     - API_ROLE=false
     - COLLECT_ROLE=true
+    - INFLUX_HOST=influx
+    - INFLUX_PORT=8086
+    - INFLUX_DATABASE=significant_trades
   env_file:
     - ./.env.prod
   networks:
@@ -50,10 +53,16 @@ services:
       - NODE_ENV=production
       - API_ROLE=true
       - COLLECT_ROLE=false
+      - INFLUX_HOST=influx
+      - INFLUX_PORT=8086
+      - INFLUX_DATABASE=significant_trades
     env_file:
       - ./.env.prod
     networks:
       - backend
+    depends_on:
+      influx:
+        condition: service_healthy
     deploy:
       mode: replicated
       replicas: 1
@@ -69,6 +78,9 @@ services:
     environment:
       - COLLECTOR_ID=btc-collector
       - PAIRS=COINBASE:BTC-USD,BINANCE:btcusdt
+    depends_on:
+      influx:
+        condition: service_healthy
     deploy:
       mode: replicated
       replicas: 1
@@ -81,6 +93,9 @@ services:
     environment:
       - COLLECTOR_ID=eth-collector
       - PAIRS=COINBASE:ETH-USD,BINANCE:ethusdt
+    depends_on:
+      influx:
+        condition: service_healthy
     deploy:
       mode: replicated
       replicas: 1
@@ -96,6 +111,14 @@ services:
       - backend
     environment:
       - INFLUXDB_HTTP_AUTH_ENABLED=false
+      - INFLUXDB_DB=significant_trades
+      - INFLUXDB_REPORTING_DISABLED=true
+      - INFLUXDB_ADMIN_ENABLED=true
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "SHOW DATABASES"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
     deploy:
       mode: replicated
       replicas: 1
@@ -108,14 +131,42 @@ services:
     image: chronograf:latest
     volumes:
       - chronograf_data:/var/lib/chronograf
+      - ./config/chronograf/sources.json:/usr/share/chronograf/resources/sources/default.json
     ports:
       - '8885:8888'
     depends_on:
-      - influx
+      influx:
+        condition: service_healthy
     environment:
-      - INFLUXDB_URL=http://${INFLUX_HOST:-influx}:${INFLUX_PORT:-8086}
+      - INFLUXDB_URL=http://influx:8086
+      - INFLUXDB_USERNAME=
+      - INFLUXDB_PASSWORD=
+      - INFLUXDB_ORG=
+      - INFLUXDB_BUCKET=significant_trades
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8888"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
+    deploy:
+      mode: replicated
+      replicas: 1
+
+  telegraf:
+    container_name: aggr-telegraf
+    image: telegraf:latest
+    volumes:
+      - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    networks:
+      - backend
+    depends_on:
+      influx:
+        condition: service_healthy
+    environment:
+      - INFLUXDB_URL=http://influx:8086
+      - INFLUXDB_DB=significant_trades
     deploy:
       mode: replicated
       replicas: 1
