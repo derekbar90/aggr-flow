@@ -207,9 +207,3 @@ For issues related to:
 
 Same as [Aggr Server](https://github.com/Tucsky/aggr-server)
 
-## Supporting the Project
-
-If you like what is being done here, consider supporting the original project:
-
-ETH: 0xe3c893cdA4bB41fCF402726154FB4478Be2732CE
-BTC: 3PK1bBK8sG3zAjPBPD7g3PL14Ndux3zWEz
